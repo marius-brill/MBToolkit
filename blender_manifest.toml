@@ -1,0 +1,15 @@
+schema_version = "1.0.0"
+
+id = "mbtoolkit"
+version = "0.2.0"
+name = "MBToolkit"
+tagline = "Personal hard surface workflow toolkit"
+maintainer = "Marius Brill"
+type = "add-on"
+
+blender_version_min = "5.2.0"
+
+license = ["SPDX:GPL-3.0-or-later"]
+
+[permissions]
+files = "Read and run user-selected Python scripts"
