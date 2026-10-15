@@ -3,7 +3,7 @@
 import bpy
 
 from ..core.registry import register_classes, unregister_classes
-from ..features import align, rename, scene_stats, script_runner, geonodes, modifier_list
+from ..features import align, rename, scene_stats, script_runner, geonodes, resample
 
 
 class MBT_PT_main(bpy.types.Panel):
@@ -56,6 +56,14 @@ class MBT_PT_align(_SubPanel, bpy.types.Panel):
         align.draw(self.layout, context)
 
 
+class MBT_PT_resample(_SubPanel, bpy.types.Panel):
+    bl_idname = "MBT_PT_resample"
+    bl_label = "Resample"
+
+    def draw(self, context):
+        resample.draw(self.layout, context)
+
+
 class MBT_PT_low_to_high(_SubPanel, bpy.types.Panel):
     bl_idname = "MBT_PT_low_to_high"
     bl_label = "Low to High"
@@ -106,26 +114,17 @@ class MBT_PT_scene_stats(_SubPanel, bpy.types.Panel):
         scene_stats.draw(self.layout, context)
 
 
-class MBT_PT_modifier_list(_SubPanel, bpy.types.Panel):
-    bl_idname = "MBT_PT_modifier_list"
-    bl_label = "Modifier List"
-
-    def draw(self, context):
-        from ..features import modifier_list
-        modifier_list.draw(self.layout, context)
-
-
 # Classes order determines order in n-panel
 classes = (
     MBT_PT_main,
     MBT_PT_tools,
     MBT_PT_align,
+    MBT_PT_resample,
     MBT_PT_script_runner,
     MBT_PT_low_to_high,
     MBT_PT_uv,
     MBT_PT_bake,
     MBT_PT_scene_stats,
-    MBT_PT_modifier_list,
 )
 
 

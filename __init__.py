@@ -2,7 +2,7 @@ bl_info = {
     "name": "MBToolkit",
     "author": "Your Name",
     "version": (0, 2, 0),
-    "blender": (3, 0, 0),
+    "blender": (5, 2, 0),
     "location": "View3D > Sidebar > MBToolkit",
     "description": "Personal hard surface workflow toolkit",
     "category": "3D View",
@@ -12,7 +12,7 @@ bl_info = {
 MBToolkit - personal hard surface workflow toolkit.
 
 Every feature lives in its own module and exposes register()/unregister().
-To add a feature: create the module, add its dotted name to MODULES below.
+To add a feature: import the module and add it to _modules below.
 Order matters: property groups must register before anything that uses them.
 """
 
@@ -20,11 +20,14 @@ Order matters: property groups must register before anything that uses them.
 try:
     # Import all modules directly
     from .core import props, ops
-    from .features import script_runner, align, rename, scene_stats, geonodes, uv_tools, clean_up, modifier_list
+    from .features import script_runner, align, rename, scene_stats, geonodes, uv_tools, clean_up, modifier_list, resample
     from .ui import panels
+    from . import preferences
+    from .features.pie_menus import data as pie_data, ui as pie_ui, ops as pie_ops, runtime as pie_runtime, keymap as pie_keymap
     
     # Register everything
-    _modules = [props, ops, script_runner, align, rename, scene_stats, geonodes, uv_tools, clean_up, modifier_list, panels]
+    _modules = [props, ops, pie_data, pie_ui, pie_ops, pie_runtime, preferences, pie_keymap,
+                script_runner, align, rename, scene_stats, geonodes, uv_tools, clean_up, modifier_list, resample, panels]
     
     def register():
         """Register all addon modules"""

@@ -1,27 +1,532 @@
+"""Destructive integration tests: run ONLY in --background --factory-startup."""
+
+import contextlib
+import importlib
+import io
+from pathlib import Path
+import sys
+
 import bpy
+import bmesh
 
-# Test script to verify clean_up operator registration
-print("Testing MBToolkit registration...")
+ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(ROOT.parent))
+addon = importlib.import_module(ROOT.name)
+resample = importlib.import_module(f'{ROOT.name}.features.resample')
 
-# Try to find the operator in Blender's registry
-operator_id = "mbt.clean_up"
-if operator_id in bpy.ops:
-    print(f"✓ Operator '{operator_id}' found in bpy.ops")
-    
-    # Check if it has proper properties
+
+def lifecycle(function):
+    output = io.StringIO()
+    with contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
+        function()
+    assert 'Failed' not in output.getvalue() and 'Traceback' not in output.getvalue(), output.getvalue()
+
+
+def mesh_object(vertices, edges=(), faces=(), face_mode=False):
+    if bpy.context.mode != 'OBJECT':
+        bpy.ops.object.mode_set(mode='OBJECT')
+    for obj in list(bpy.context.scene.objects):
+        bpy.data.objects.remove(obj, do_unlink=True)
+    mesh = bpy.data.meshes.new('ResampleTest')
+    mesh.from_pydata(vertices, edges, faces)
+    obj = bpy.data.objects.new('ResampleTest', mesh)
+    bpy.context.collection.objects.link(obj)
+    obj.select_set(True)
+    bpy.context.view_layer.objects.active = obj
+    bpy.context.tool_settings.mesh_select_mode = (False, not face_mode, face_mode)
+    bpy.ops.object.mode_set(mode='EDIT')
+    bm = bmesh.from_edit_mesh(mesh)
+    for elements in (bm.faces, bm.edges, bm.verts):
+        for element in elements:
+            element.select_set(False)
+    return obj, bm
+
+
+def snapshot():
+    bm = bmesh.from_edit_mesh(bpy.context.edit_object.data)
+    for elements in (bm.verts, bm.edges, bm.faces):
+        elements.index_update()
+    return (
+        tuple((tuple(v.co), v.select, v.hide) for v in bm.verts),
+        tuple((tuple(v.index for v in e.verts), e.select, e.hide, e.seam) for e in bm.edges),
+        tuple((tuple(v.index for v in f.verts), f.select, f.hide, f.material_index) for f in bm.faces),
+    )
+
+
+def wire(count, method='LINEAR'):
+    obj, bm = mesh_object([(i, 0, 0) for i in range(4)], [(i, i+1) for i in range(3)])
+    layer = bm.verts.layers.float.new('wire_weight')
+    for vertex in bm.verts:
+        vertex[layer] = 0.5
+    for edge in bm.edges:
+        edge.seam = True
+        edge.select_set(True)
+    bmesh.update_edit_mesh(obj.data)
+    assert bpy.ops.mbt.resample_wire(count=count, method=method) == {'FINISHED'}
+    bm = bmesh.from_edit_mesh(obj.data)
+    assert len(bm.verts) == count and len(bm.edges) == count-1
+    for i, vertex in enumerate(sorted(bm.verts, key=lambda v: v.co.x)):
+        assert abs(vertex.co.x - 3*i/(count-1)) < 1e-5
+        assert vertex.select
+    assert all(e.select for e in bm.edges)
+    layer = bm.verts.layers.float.get('wire_weight')
+    assert layer is not None and all(abs(v[layer]-0.5) < 1e-6 for v in bm.verts)
+    assert all(e.seam for e in bm.edges)
+
+
+def strip(count, face_mode, curved=False, caps=False):
+    source = 4
+    vertices = [(i, y, 0.2*i*i if curved else 0) for i in range(source) for y in (0, 1)]
+    faces = [(2*i, 2*i+2, 2*i+3, 2*i+1) for i in range(source-1)]
+    if caps:
+        vertices += [(-1, 0, 0), (-1, 1, 0)]
+        faces += [(8, 0, 1, 9)]
+    obj, bm = mesh_object(vertices, faces=faces, face_mode=face_mode)
+    uv = bm.loops.layers.uv.new('TestUV')
+    attr = bm.verts.layers.float.new('test_weight')
+    for v in bm.verts:
+        v[attr] = 0.7
+    for f in bm.faces:
+        f.material_index = 2
+        for loop in f.loops:
+            loop[uv].uv = (loop.vert.co.x, loop.vert.co.y)
+    if face_mode:
+        for face in list(bm.faces)[:3]:
+            face.select_set(True)
+    else:
+        for edge in bm.edges:
+            if edge.verts[0].co.x == edge.verts[1].co.x and edge.verts[0].co.x >= 0:
+                edge.select_set(True)
+    bmesh.update_edit_mesh(obj.data)
+    assert bpy.ops.mbt.resample_surface(count=count, roundness=0.85 if curved else 0) == {'FINISHED'}
+    bm = bmesh.from_edit_mesh(obj.data)
+    assert len(bm.verts) == 2*count + (2 if caps else 0), (count, len(bm.verts))
+    assert len(bm.faces) == count-1 + int(caps)
+    assert all(len(f.verts) == 4 and f.material_index == 2 for f in bm.faces)
+    assert bm.loops.layers.uv.get('TestUV') is not None
+    attr = bm.verts.layers.float.get('test_weight')
+    assert attr is not None and all(abs(v[attr]-0.7) < 1e-5 for v in bm.verts)
+    if not curved:
+        for y in (0, 1):
+            rail = sorted((v for v in bm.verts if abs(v.co.y-y) < 1e-6 and v.co.x >= 0), key=lambda v: v.co.x)
+            assert len(rail) == count
+            assert all(abs(v.co.x-3*i/(count-1)) < 1e-5 for i, v in enumerate(rail))
+    assert sum(f.select for f in bm.faces) == count-1 if face_mode else sum(e.select for e in bm.edges) == count
+    assert bpy.ops.mbt.resample_surface(count=count, roundness=0) == {'FINISHED'}
+
+
+def rejected(vertices, edges, faces, surface=False, face_mode=False):
+    obj, bm = mesh_object(vertices, edges, faces, face_mode)
+    for element in (bm.faces if face_mode else bm.edges):
+        element.select_set(True)
+    bmesh.update_edit_mesh(obj.data)
+    before = snapshot()
+    op = bpy.ops.mbt.resample_surface if surface else bpy.ops.mbt.resample_wire
+    assert op(count=6) == {'CANCELLED'}
+    assert snapshot() == before
+
+
+def extra_cases():
+    for surface in (False, True):
+        vertices = [(i, y+offset, 0) for offset in (0, 3) for i in range(3) for y in (0, 1)]
+        faces = [(base+2*i, base+2*i+2, base+2*i+3, base+2*i+1)
+                 for base in (0, 6) for i in range(2)]
+        if surface:
+            obj, bm = mesh_object(vertices, faces=faces, face_mode=True)
+            for face in bm.faces:
+                face.select_set(True)
+            op = bpy.ops.mbt.resample_surface
+        else:
+            obj, bm = mesh_object([(i, offset, 0) for offset in (0, 3) for i in range(3)],
+                                  [(0,1),(1,2),(3,4),(4,5)])
+            for edge in bm.edges:
+                edge.select_set(True)
+            op = bpy.ops.mbt.resample_wire
+        bmesh.update_edit_mesh(obj.data)
+        assert op(count=5) == {'FINISHED'}
+        bm = bmesh.from_edit_mesh(obj.data)
+        assert len(bm.verts) == (20 if surface else 10)
+    # A boundary chain can move on a surface, but cannot change count.
+    obj, bm = mesh_object([(0,0,0),(1,0,0),(2,0,0),(0,1,0),(1,1,0),(2,1,0)],
+                          faces=[(0,1,4,3),(1,2,5,4)])
+    for edge in bm.edges:
+        if all(v.co.y == 0 for v in edge.verts):
+            edge.select_set(True)
+    bmesh.update_edit_mesh(obj.data)
+    assert bpy.ops.mbt.resample_wire(count=3) == {'FINISHED'}
+    before = snapshot()
+    assert bpy.ops.mbt.resample_wire(count=5) == {'CANCELLED'}
+    assert snapshot() == before
+    # Hidden edges cannot be used to form a valid chain.
+    obj, bm = mesh_object([(0,0,0),(1,0,0)], [(0,1)])
+    for edge in bm.edges:
+        edge.select_set(True)
+        edge.hide_set(True)
+    bmesh.update_edit_mesh(obj.data)
+    before = snapshot()
+    assert bpy.ops.mbt.resample_wire(count=5) == {'CANCELLED'}
+    assert snapshot() == before
+    # Connected rails remain supported without detaching neighboring geometry.
+    obj, bm = mesh_object([(x,y,0) for y in range(3) for x in range(3)],
+                          faces=[(0,1,4,3),(1,2,5,4),(3,4,7,6),(4,5,8,7)], face_mode=True)
+    for face in list(bm.faces)[:2]:
+        face.select_set(True)
+    bmesh.update_edit_mesh(obj.data)
+    assert bpy.ops.mbt.resample_surface(count=5) == {'FINISHED'}
+    # Shape keys and multi-object edit are explicit unsupported cases.
+    bpy.ops.object.mode_set(mode='OBJECT')
+    obj.shape_key_add(name='Basis')
+    bpy.ops.object.mode_set(mode='EDIT')
+    before = snapshot()
+    assert bpy.ops.mbt.resample_surface(count=5) == {'CANCELLED'}
+    assert snapshot() == before
+    bpy.ops.object.mode_set(mode='OBJECT')
+    other = bpy.data.objects.new('OtherTest', bpy.data.meshes.new('OtherTest'))
+    bpy.context.collection.objects.link(other)
+    other.select_set(True)
+    bpy.ops.object.mode_set(mode='EDIT')
+    assert len(bpy.context.objects_in_mode) == 2
+    before = snapshot()
+    assert bpy.ops.mbt.resample_wire(count=5) == {'CANCELLED'}
+    assert snapshot() == before
+    print('PASS disconnected components / surface chains / hidden / side adjacency / shape keys / multi-object')
+
+
+def connected_strip_cases():
+    for both_sides in (False, True):
+        for count in (2, 4, 7):
+            ys = (-1, 0, 1, 2) if both_sides else (0, 1, 2)
+            vertices = [(x, y, 0) for y in ys for x in range(4)]
+            faces = [(4*j+i, 4*j+i+1, 4*(j+1)+i+1, 4*(j+1)+i)
+                     for j in range(len(ys)-1) for i in range(3)]
+            obj, bm = mesh_object(vertices, faces=faces, face_mode=True)
+            uv = bm.loops.layers.uv.new('ConnectedUV')
+            for face in bm.faces:
+                center = face.calc_center_median()
+                face.material_index = 1 if 0 < center.y < 1 else 2
+                if 0 < center.y < 1:
+                    face.select_set(True)
+                for loop in face.loops:
+                    loop[uv].uv = loop.vert.co.xy
+            perimeter = {tuple(v.co) for v in bm.verts if v.co.y not in (0, 1)}
+            bmesh.update_edit_mesh(obj.data)
+            assert bpy.ops.mbt.resample_surface(count=count, roundness=0) == {'FINISHED'}
+            bm = bmesh.from_edit_mesh(obj.data)
+            assert sum(f.select for f in bm.faces) == count-1
+            assert all(len(f.verts) == 4 for f in bm.faces if f.select)
+            assert all(f.normal.z > 0.99 for f in bm.faces)
+            assert perimeter == {tuple(v.co) for v in bm.verts if v.co.y not in (0, 1)}
+            assert all(len(e.link_faces) in (1, 2) for e in bm.edges)
+            assert all(len(e.link_faces) == 2 for e in bm.edges
+                       if all(abs(v.co.y-1) < 1e-6 for v in e.verts))
+            assert all(f.material_index == (1 if f.select else 2) for f in bm.faces)
+            assert bm.loops.layers.uv.get('ConnectedUV') is not None
+            unseen = set(bm.verts)
+            stack = [next(iter(unseen))]
+            while stack:
+                vertex = stack.pop()
+                if vertex not in unseen:
+                    continue
+                unseen.remove(vertex)
+                stack.extend(e.other_vert(vertex) for e in vertex.link_edges)
+            assert not unseen, 'Strip became detached'
+            # Reusing the new connected result must also work.
+            assert bpy.ops.mbt.resample_surface(count=5, roundness=0) == {'FINISHED'}
+    print('PASS connected strips / increase-decrease-same / side n-gons / normals / perimeter / materials / repeat')
+
+
+def modifier_list_cases():
+    """Exercise real RNA callbacks and draw construction without an interactive UI."""
+    from types import SimpleNamespace
+    feature = importlib.import_module(f'{ROOT.name}.features.modifier_list')
+
+    class Layout:
+        def __init__(self):
+            self.calls = []
+
+        def row(self, **kwargs):
+            return self
+
+        column = row
+        box = row
+        column_flow = row
+
+        def template_modifier_asset_menu_items(self, **kwargs):
+            pass
+
+        def label(self, **kwargs):
+            self.calls.append(('label', kwargs))
+
+        def prop(self, data, name, **kwargs):
+            assert name in data.bl_rna.properties, name
+            self.calls.append(('prop', name))
+
+        def template_list(self, list_type, list_id, data, collection, active_data, active_name, **kwargs):
+            assert list_type == 'MBT_UL_modifiers'
+            assert active_name in active_data.bl_rna.properties
+            assert active_data.bl_rna.properties[active_name].type == 'INT'
+            self.calls.append(('list', len(getattr(data, collection))))
+
+        def operator(self, idname, **kwargs):
+            namespace, name = idname.split('.')
+            getattr(getattr(bpy.ops, namespace), name).get_rna_type()
+            self.calls.append(('operator', idname))
+            return SimpleNamespace()
+
+    obj, _ = mesh_object([(0,0,0)])
+    bpy.ops.object.mode_set(mode='OBJECT')
+    assert obj.mbt_modifier_index == 0
+    original_keys = set(bpy.context.scene.keys()), set(obj.keys())
+    feature.draw(Layout(), bpy.context)
+    first = obj.modifiers.new('First', 'BEVEL')
+    second = obj.modifiers.new('Second', 'SUBSURF')
+    obj.mbt_modifier_index = 0
+    assert obj.modifiers.active == first
+    obj.modifiers.active = second
+    assert obj.mbt_modifier_index == 1
+    obj.mbt_modifier_index = 999
+    assert obj.modifiers.active == second
+    bpy.ops.object.modifier_move_up(modifier=second.name)
+    assert obj.mbt_modifier_index == 0
+    obj.modifiers.remove(second)
+    assert obj.mbt_modifier_index == 0
+    for _ in range(3):
+        feature.draw(Layout(), bpy.context)
+    assert original_keys == (set(bpy.context.scene.keys()), set(obj.keys()))
+    for kind in ('DEFAULT', 'COMPACT', 'GRID'):
+        feature.MBT_UL_modifiers.draw_item(SimpleNamespace(layout_type=kind), bpy.context,
+            Layout(), obj, first, 0, obj, feature.INDEX_PROPERTY)
+    bpy.ops.object.mode_set(mode='EDIT')
+    feature.draw(Layout(), bpy.context)
+    assert not feature.MBT_OT_modifier_add_menu.poll(bpy.context)
+    bpy.ops.object.mode_set(mode='OBJECT')
+    assert feature.MBT_OT_modifier_add_menu.poll(bpy.context)
+    from bl_ui.properties_data_modifier import DATA_PT_modifiers
+    assert DATA_PT_modifiers.draw is feature._draw_native
+    assert not hasattr(bpy.types, 'MBT_PT_modifier_list')
+    # A pinned Properties object differs from the viewport's active object.
+    pinned = bpy.data.objects.new('PinnedTest', bpy.data.meshes.new('PinnedTest'))
+    pinned.modifiers.new('PinnedModifier', 'BEVEL')
+    pinned_context = SimpleNamespace(object=pinned, active_object=obj, preferences=bpy.context.preferences)
+    layout = Layout()
+    feature.draw(layout, pinned_context)
+    assert ('list', 1) in layout.calls
+    assert pinned.mbt_modifier_index == 0
+    # No object, unsupported object, and non-editable data paths.
+    feature.draw(Layout(), SimpleNamespace(object=None))
+    camera = bpy.data.objects.new('CameraTest', bpy.data.cameras.new('CameraTest'))
+    feature.draw(Layout(), SimpleNamespace(object=camera, preferences=bpy.context.preferences))
+    assert not feature.MBT_OT_modifier_add_menu.poll(SimpleNamespace(
+        object=camera, window=bpy.context.window, mode='OBJECT'))
+    readonly = SimpleNamespace(is_editable=False)
+    feature._set_index(readonly, 0)
+    readonly = SimpleNamespace(is_editable=False, type='MESH', modifiers=obj.modifiers, bl_rna=obj.bl_rna)
+    readonly.mbt_modifier_locks = obj.mbt_modifier_locks
+    readonly.mode = 'OBJECT'
+    feature.draw(Layout(), SimpleNamespace(object=readonly, preferences=bpy.context.preferences))
+    assert not feature.MBT_OT_modifier_add_menu.poll(SimpleNamespace(
+        object=readonly, window=bpy.context.window, mode='OBJECT'))
+    other = bpy.data.objects.new('EmptyStack', bpy.data.meshes.new('EmptyStack'))
+    assert other.mbt_modifier_index == 0 and obj.modifiers.active == first
+    obj.modifiers.remove(first)
+    feature.draw(Layout(), bpy.context)
+    assert obj.mbt_modifier_index == 0
+    assert original_keys == (set(bpy.context.scene.keys()), set(obj.keys()))
+    print('PASS modifier list RNA selection / object switching / deletion / reorder / read-only draw / contexts / Properties navigation')
+
+
+def modifier_workflow_cases():
+    from types import SimpleNamespace
+    feature = importlib.import_module(f'{ROOT.name}.features.modifier_list')
+    preferences = importlib.import_module(f'{ROOT.name}.preferences')
+    from bl_ui.properties_data_modifier import DATA_PT_modifiers
+    obj = bpy.context.object
+    obj.modifiers.clear()
+    mods = [obj.modifiers.new(str(i), 'BEVEL') for i in range(6)]
+    for index in (1, 4):
+        assert bpy.ops.mbt.modifier_lock(uid=mods[index].persistent_uid) == {'FINISHED'}
+    obj.modifiers.move(4, 0)
+    obj.modifiers.move(list(obj.modifiers).index(mods[1]), 5)
+    feature.enforce_locks(obj)
+    assert obj.modifiers[1] == mods[1] and obj.modifiers[4] == mods[4]
+    mods[1].name = 'RenamedLock'
+    obj.modifiers.move(1, 3)
+    feature._reset_locks()
+    feature._enforce_pending()
+    assert obj.modifiers[1] == mods[1]
+    # Shrink below the second requested index, then add enough to restore it.
+    for modifier in (mods[0], mods[2], mods[3]):
+        obj.modifiers.remove(modifier)
+    feature.enforce_locks(obj)
+    assert list(obj.modifiers).index(mods[4]) == 1
+    for i in range(3):
+        obj.modifiers.new('Extra', 'SUBSURF')
+    feature.enforce_locks(obj)
+    assert list(obj.modifiers).index(mods[4]) == 4
+    obj.modifiers.remove(mods[1])
+    feature.enforce_locks(obj)
+    assert len(obj.mbt_modifier_locks) == 1
+    assert bpy.ops.mbt.modifier_lock(uid=mods[4].persistent_uid) == {'FINISHED'}
+    assert not obj.mbt_modifier_locks
+    obj.modifiers[-1].use_pin_to_last = True
+    assert bpy.ops.mbt.modifier_lock(uid=mods[4].persistent_uid) == {'CANCELLED'}
+    obj.modifiers[-1].use_pin_to_last = False
+    entry = feature.catalog('MESH')[0]
+    count = len(obj.modifiers)
+    assert bpy.ops.mbt.modifier_add(key='object.modifier_add:BEVEL', object_name=obj.name) == {'FINISHED'}
+    assert len(obj.modifiers) == count+1
+    # Bottom-relative pins keep the tail below new modifiers.
+    tail = obj.modifiers[-1]
+    second_tail = obj.modifiers[-2]
+    assert bpy.ops.mbt.modifier_lock(uid=tail.persistent_uid) == {'FINISHED'}
+    assert bpy.ops.mbt.modifier_lock(uid=second_tail.persistent_uid) == {'FINISHED'}
+    assert bpy.ops.mbt.modifier_add(key='object.modifier_add:SOLIDIFY', object_name=obj.name) == {'FINISHED'}
+    assert obj.modifiers[-1] == tail and obj.modifiers[-2] == second_tail
+    moved = obj.modifiers[0]
+    assert bpy.ops.mbt.modifier_manage(uid=moved.persistent_uid, action='DOWN') == {'FINISHED'}
+    assert obj.modifiers.active == moved
+    assert bpy.ops.mbt.modifier_manage(uid=tail.persistent_uid, action='UP') == {'CANCELLED'}
+    assert bpy.ops.mbt.modifier_manage(uid=second_tail.persistent_uid, action='DELETE') == {'FINISHED'}
+    assert obj.modifiers[-1] == tail
+    assert len(obj.mbt_modifier_locks) == 1
+    # Upgrade old exact-index records from current positions once, outside draw.
+    obj.mbt_modifier_locks.clear()
+    legacy = obj.mbt_modifier_locks.add()
+    legacy.uid, legacy.index = tail.persistent_uid, len(obj.modifiers)-1
+    feature.enforce_locks(obj)
+    assert legacy.from_bottom and legacy.index == 0
+    before = len(obj.modifiers)
+    assert bpy.ops.mbt.modifier_manage(uid=tail.persistent_uid, action='DELETE') == {'FINISHED'}
+    assert len(obj.modifiers) == before-1 and not obj.mbt_modifier_locks
+    camera = bpy.data.objects.new('UnsupportedAdd', bpy.data.cameras.new('UnsupportedAdd'))
+    bpy.context.collection.objects.link(camera)
+    assert bpy.ops.mbt.modifier_add(key='object.modifier_add:BEVEL', object_name=camera.name) == {'CANCELLED'}
+    # Attach an actual preferences entry (register() alone does not enable an add-on).
+    addon_entry = bpy.context.preferences.addons.get(ROOT.name)
+    created = addon_entry is None
+    if created:
+        addon_entry = bpy.context.preferences.addons.new()
+        addon_entry.module = ROOT.name
+    prefs = addon_entry.preferences
+    assert isinstance(prefs, preferences.MBT_Preferences)
+    prefs.modifier_favorites.clear()
+    for kind in ('BEVEL', 'SUBSURF'):
+        assert bpy.ops.mbt.modifier_favorite(key='object.modifier_add:'+kind,
+            label=kind, action='TOGGLE') == {'FINISHED'}
+    assert len(prefs.modifier_favorites) == 2
+    # Exercise preferences, favorites toolbar and overview construction too.
+    class DrawLayout:
+        def row(self, **kwargs):
+            return self
+        column = row
+        column_flow = row
+        def label(self, **kwargs):
+            pass
+        def operator(self, idname, **kwargs):
+            namespace, name = idname.split('.')
+            getattr(getattr(bpy.ops, namespace), name).get_rna_type()
+            return SimpleNamespace()
+        def template_modifier_asset_menu_items(self, **kwargs):
+            assert kwargs['catalog_path'] in feature.CATEGORIES
+        def template_list(self, *args, **kwargs):
+            pass
+    preferences.draw_modifier_preferences(DrawLayout(), prefs)
+    feature.draw(DrawLayout(), bpy.context)
+    feature.MBT_MT_modifier_overview.draw(SimpleNamespace(layout=DrawLayout()), bpy.context)
+    bpy.ops.mbt.modifier_favorite(action='UP', index=1)
+    assert prefs.modifier_favorites[0].key.endswith('SUBSURF')
+    bpy.ops.mbt.modifier_favorite(action='REMOVE', index=1)
+    assert len(prefs.modifier_favorites) == 1
+    prefs.modifier_favorites.clear()
+    if created:
+        bpy.context.preferences.addons.remove(addon_entry)
+    assert DATA_PT_modifiers.draw is feature._draw_native
+    assert feature._stack_changed in bpy.app.handlers.depsgraph_update_post
+    assert len(feature.catalog('MESH')) > 40
+    assert not any(e['args'].get('type') == 'BEVEL' for e in feature.catalog('EMPTY'))
+    print('PASS favorites / add targeting / bottom-relative pins / migration / reorder / delete / shrink-grow / native pin conflict')
+
+
+def run():
+    assert bpy.app.background, 'Run tests in a disposable background Blender process'
+    for cycle in range(2):
+        lifecycle(addon.register)
+        for module in addon._modules:
+            for cls in getattr(module, 'classes', ()):
+                assert cls.is_registered, cls.__name__
+        assert bpy.ops.mbt.resample_wire.get_rna_type().identifier == 'MBT_OT_resample_wire'
+        assert bpy.ops.mbt.resample_surface.get_rna_type().identifier == 'MBT_OT_resample_surface'
+        assert bpy.types.MBT_PT_resample.bl_parent_id == 'MBT_PT_main'
+        if cycle == 0:
+            lifecycle(addon.unregister)
+            assert not hasattr(bpy.types, 'MBT_PT_resample')
+            assert not hasattr(bpy.types.Object, 'mbt_modifier_index')
+    print('PASS registration / unregister / re-register')
+    modifier_list_cases()
+    modifier_workflow_cases()
+    connected_strip_cases()
+    for count in (2, 4, 9):
+        for method in ('LINEAR', 'CATMULL'):
+            wire(count, method)
+    print('PASS wire counts / interpolation / selection')
+    for face_mode in (False, True):
+        for count in (2, 4, 7):
+            strip(count, face_mode)
+            strip(count, face_mode, curved=True)
+            strip(count, face_mode, caps=True)
+    print('PASS surface counts / selection / profiles / end neighbors / custom data')
+    rejected([(0,0,0),(1,0,0),(0,1,0),(-1,0,0)], [(0,1),(0,2),(0,3)], [])
+    rejected([(0,0,0),(1,0,0),(0,1,0)], [(0,1),(1,2),(2,0)], [])
+    rejected([(0,0,0),(0,0,0)], [(0,1)], [])
+    rejected([(0,0,0),(1,0,0),(0,1,0)], [], [(0,1,2)], True, True)
+    rejected([(x,y,0) for y in range(3) for x in range(3)], [],
+             [(0,1,4,3),(1,2,5,4),(3,4,7,6),(4,5,8,7)], True, True)
+    print('PASS invalid selections leave mesh unchanged')
+    wire(4)
+    before = snapshot()
+    def fail(work):
+        work.verts.new((9,9,9))
+        raise RuntimeError('intentional staging failure')
     try:
-        op = bpy.ops.mbt.clean_up
-        print("✓ Operator callable")
-    except Exception as e:
-        print(f"✗ Operator not callable: {e}")
-else:
-    print(f"✗ Operator '{operator_id}' NOT found in bpy.ops")
+        resample._transaction(bpy.context, fail)
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError('Expected staging failure')
+    assert snapshot() == before
+    real_update = bmesh.update_edit_mesh
+    calls = []
+    def fail_commit(*args, **kwargs):
+        calls.append(True)
+        if len(calls) == 1:
+            raise RuntimeError('intentional commit failure')
+        return real_update(*args, **kwargs)
+    bmesh.update_edit_mesh = fail_commit
+    try:
+        try:
+            resample._transaction(bpy.context, lambda work: work.verts.new((9,9,9)))
+        except RuntimeError:
+            pass
+        else:
+            raise AssertionError('Expected commit failure')
+    finally:
+        bmesh.update_edit_mesh = real_update
+    assert snapshot() == before
+    assert not any(m.name.startswith('__mbt_resample_') for m in bpy.data.meshes)
+    print('PASS staging failure / commit rollback / temporary data cleanup')
+    extra_cases()
+    bpy.ops.object.mode_set(mode='OBJECT')
+    assert not bpy.ops.mbt.resample_wire.poll() and not bpy.ops.mbt.resample_surface.poll()
+    lifecycle(addon.unregister)
+    assert not hasattr(bpy.types.Object, 'mbt_modifier_index')
+    assert not hasattr(bpy.types.Object, 'mbt_modifier_locks')
+    feature = importlib.import_module(f'{ROOT.name}.features.modifier_list')
+    assert feature._stack_changed not in bpy.app.handlers.depsgraph_update_post
+    assert not bpy.app.timers.is_registered(feature._enforce_pending)
+    from bl_ui.properties_data_modifier import DATA_PT_modifiers
+    assert DATA_PT_modifiers.draw is not feature._draw_native
+    print('ALL MODIFIER LIST AND RESAMPLE TESTS PASSED')
 
-# Test that the panel is registered properly
-panel_id = "MBT_PT_tools"
-if panel_id in bpy.types.Panel.__subclasses__():
-    print(f"✓ Panel '{panel_id}' found")
-else:
-    print(f"✗ Panel '{panel_id}' NOT found")
 
-print("Test completed.")
+if __name__ == '__main__':
+    run()
