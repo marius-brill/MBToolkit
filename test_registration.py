@@ -369,8 +369,14 @@ def modifier_workflow_cases():
     assert bpy.ops.mbt.modifier_lock(uid=mods[4].persistent_uid) == {'FINISHED'}
     assert not obj.mbt_modifier_locks
     obj.modifiers[-1].use_pin_to_last = True
-    assert bpy.ops.mbt.modifier_lock(uid=mods[4].persistent_uid) == {'CANCELLED'}
+    feature.enforce_locks(obj)
+    native = obj.modifiers[-1]
+    assert any(p.uid == native.persistent_uid and p.native_pin for p in obj.mbt_modifier_locks)
+    assert bpy.ops.mbt.modifier_lock(uid=mods[4].persistent_uid) == {'FINISHED'}
+    assert bpy.ops.mbt.modifier_lock(uid=mods[4].persistent_uid) == {'FINISHED'}
     obj.modifiers[-1].use_pin_to_last = False
+    feature.enforce_locks(obj)
+    assert not obj.mbt_modifier_locks
     entry = feature.catalog('MESH')[0]
     count = len(obj.modifiers)
     assert bpy.ops.mbt.modifier_add(key='object.modifier_add:BEVEL', object_name=obj.name) == {'FINISHED'}
@@ -416,10 +422,13 @@ def modifier_workflow_cases():
     assert len(prefs.modifier_favorites) == 2
     # Exercise preferences, favorites toolbar and overview construction too.
     class DrawLayout:
+        def prop(self, data, name, **kwargs):
+            assert name in data.bl_rna.properties
         def row(self, **kwargs):
             return self
         column = row
         column_flow = row
+        box = row
         def label(self, **kwargs):
             pass
         def operator(self, idname, **kwargs):
@@ -447,6 +456,196 @@ def modifier_workflow_cases():
     print('PASS favorites / add targeting / bottom-relative pins / migration / reorder / delete / shrink-grow / native pin conflict')
 
 
+def modifier_editor_cases():
+    from types import SimpleNamespace
+    feature = importlib.import_module(f'{ROOT.name}.features.modifier_list')
+    obj = bpy.context.object
+    obj.modifiers.clear()
+    first = obj.modifiers.new('EditorBevel', 'BEVEL')
+    second = obj.modifiers.new('EditorSubdivision', 'SUBSURF')
+    obj.modifiers.active = first
+
+    class Layout:
+        def __init__(self):
+            self.props = []
+            self.operators = []
+        def row(self, **kwargs):
+            return self
+        box = row
+        def label(self, **kwargs):
+            pass
+        def context_pointer_set(self, name, value):
+            assert name == 'modifier' and value == obj.modifiers.active
+        def prop(self, data, name, **kwargs):
+            assert name in data.bl_rna.properties or name.startswith('["')
+            self.props.append((data, name))
+        def operator(self, idname, **kwargs):
+            self.operators.append((idname, kwargs))
+            return SimpleNamespace()
+        def template_curve_mapping(self, data, name):
+            assert isinstance(getattr(data, name), bpy.types.CurveMapping)
+
+    layout = Layout()
+    feature.draw_active_settings(layout, bpy.context)
+    assert (first, 'width') in layout.props
+    assert not any(data == second for data, name in layout.props)
+    assert feature.modifier_icon(first) == 'MOD_BEVEL'
+    assert feature.modifier_icon(second) == 'MOD_SUBSURF'
+    layout = Layout()
+    feature.MBT_UL_modifiers.draw_item(SimpleNamespace(layout_type='DEFAULT'), bpy.context,
+        layout, obj, first, 0, obj, feature.INDEX_PROPERTY)
+    realtime = next(kwargs for idname, kwargs in layout.operators if idname == 'mbt.modifier_viewport_toggle')
+    assert realtime['icon'] == 'RESTRICT_VIEW_OFF' and realtime['depress'] == first.show_viewport
+    old = first.show_viewport
+    assert bpy.ops.mbt.modifier_viewport_toggle(uid=first.persistent_uid) == {'FINISHED'}
+    assert first.show_viewport != old
+    render = next(kwargs for idname, kwargs in layout.operators if idname == 'mbt.modifier_render_toggle')
+    assert render['icon'] == 'RESTRICT_RENDER_OFF' and render['depress'] == first.show_render
+    for state in (False, True):
+        first.show_render = state
+        assert bpy.ops.mbt.modifier_render_toggle(uid=first.persistent_uid) == {'FINISHED'}
+        assert first.show_render != state
+    assert bpy.ops.mbt.modifier_render_toggle(uid=-1) == {'CANCELLED'}
+    assert bpy.ops.mbt.modifier_lock(uid=second.persistent_uid) == {'FINISHED'}
+    assert second.use_pin_to_last
+    second.use_pin_to_last = False
+    feature.enforce_locks(obj)
+    assert not obj.mbt_modifier_locks
+    second.use_pin_to_last = True
+    assert bpy.ops.mbt.modifier_lock(uid=second.persistent_uid) == {'FINISHED'}
+    assert not second.use_pin_to_last and not obj.mbt_modifier_locks
+    for count in range(25):
+        rows = list(feature.favorite_rows(list(range(count))))
+        assert len(rows) == (count + 3) // 4
+        assert [item for row in rows for item in row] == list(range(count))
+        assert all(len(row) == 4 for row in rows[:-1])
+        assert not rows or 1 <= len(rows[-1]) <= 4
+    assert list(feature.favorite_rows(list(range(5)))) == [[0, 1, 2, 3], [4]]
+    entry = bpy.context.preferences.addons.get(ROOT.name)
+    created = entry is None
+    if created:
+        entry = bpy.context.preferences.addons.new()
+        entry.module = ROOT.name
+    prefs = entry.preferences
+    assert prefs.modifier_popup_key == 'W' and prefs.modifier_popup_shift
+    prefs.modifier_popup_key = 'E'
+    feature.rebuild_keymap()
+    if bpy.context.window_manager.keyconfigs.addon is not None:
+        assert len(feature._keymap_items) == 1
+        assert feature._keymap_items[0][1].type == 'E'
+    prefs.modifier_popup_key = 'NONE'
+    assert not feature._keymap_items
+    prefs.modifier_popup_key = 'W'
+    if created:
+        bpy.context.preferences.addons.remove(entry)
+    feature.rebuild_keymap()
+    assert feature.MBT_OT_modifier_popup.poll(SimpleNamespace(
+        area=SimpleNamespace(type='VIEW_3D'), object=obj))
+    calls = []
+    operator = SimpleNamespace(layout=Layout())
+    def invoke_popup(value, **kwargs):
+        assert value is operator and kwargs == {'width': 440}
+        calls.append('popup')
+        return {'RUNNING_MODAL'}
+    assert feature.MBT_OT_modifier_popup.invoke(operator, SimpleNamespace(
+        window_manager=SimpleNamespace(invoke_popup=invoke_popup)), None) == {'RUNNING_MODAL'}
+    original_draw, original_settings = feature.draw, feature.draw_active_settings
+    feature.draw = lambda layout, context: calls.append('list')
+    feature.draw_active_settings = lambda layout, context: calls.append('selected')
+    try:
+        feature.MBT_OT_modifier_popup.draw(operator, bpy.context)
+    finally:
+        feature.draw, feature.draw_active_settings = original_draw, original_settings
+    assert calls == ['popup', 'list', 'selected']
+    # External creation: no MBToolkit add operator or catalog entry involved.
+    gn = importlib.import_module(f'{ROOT.name}.core.gn')
+    group = bpy.data.node_groups.new('ForeignInputsTest', 'GeometryNodeTree')
+    geometry = group.interface.new_socket(name='Geometry', in_out='INPUT', socket_type='NodeSocketGeometry')
+    angle = group.interface.new_socket(name='Angle', in_out='INPUT', socket_type='NodeSocketFloat')
+    toggle = group.interface.new_socket(name='Ignore Sharpness', in_out='INPUT', socket_type='NodeSocketBool')
+    hidden = group.interface.new_socket(name='Hidden', in_out='INPUT', socket_type='NodeSocketFloat')
+    hidden.hide_in_modifier = True
+    group.interface.new_socket(name='Result', in_out='OUTPUT', socket_type='NodeSocketGeometry')
+    group.interface.new_panel('Foreign Panel')
+    foreign = obj.modifiers.new('Foreign Auto Smooth', 'NODES')
+    foreign.node_group = group
+    obj.modifiers.active = foreign
+    gn.set_modifier_input(foreign, angle.identifier, 0.7)
+    gn.set_modifier_input(foreign, toggle.identifier, True)
+    layout = Layout()
+    feature.draw_active_settings(layout, bpy.context)
+    assert (getattr(foreign.properties.inputs, angle.identifier), 'value') in layout.props
+    assert (getattr(foreign.properties.inputs, toggle.identifier), 'value') in layout.props
+    assert (getattr(foreign.properties.inputs, hidden.identifier), 'value') not in layout.props
+    assert abs(getattr(foreign.properties.inputs, angle.identifier).value - 0.7) < 1e-6
+    assert not gn.legacy_modifier_input_exists(foreign, geometry.identifier)
+    for identifier in (geometry.identifier, 'MissingSocket'):
+        try:
+            gn.set_modifier_input(foreign, identifier, 1)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError('Non-value inputs must not use legacy IDProperties')
+    # Missing/incomplete modern input RNA must not fall through to IDProperties.
+    incomplete = SimpleNamespace(node_group=group, properties=SimpleNamespace(inputs=SimpleNamespace()))
+    feature._draw_node_inputs(Layout(), incomplete)
+    # Legacy read/write compatibility without depending on an older executable.
+    class Legacy(dict):
+        pass
+    legacy = Legacy({angle.identifier: 0.2})
+    legacy.node_group = group
+    gn.set_modifier_input(legacy, angle.identifier, 0.4)
+    assert gn.legacy_modifier_input_exists(legacy, angle.identifier)
+    feature._draw_node_inputs(SimpleNamespace(prop=lambda *args, **kwargs: None), legacy)
+    # Use the same Essentials node group that MACHIN3tools appends.
+    asset_path = Path(bpy.utils.system_resource('DATAFILES')) / 'assets' / 'nodes' / 'geometry_nodes_essentials.blend'
+    with bpy.data.libraries.load(str(asset_path), link=False) as (source, target):
+        assert 'Smooth by Angle' in source.node_groups
+        target.node_groups = ['Smooth by Angle']
+    smooth_group = target.node_groups[0]
+    foreign.node_group = smooth_group
+    layout = Layout()
+    feature.draw_active_settings(layout, bpy.context)
+    assert any(name == 'value' for data, name in layout.props)
+    feature._enforce_pending()
+    assert foreign.show_expanded and not first.show_expanded and not second.show_expanded
+    first.show_expanded = True
+    feature._enforce_pending()
+    assert first.show_expanded, 'Manual expansion must survive unchanged selection'
+    obj.mbt_modifier_index = list(obj.modifiers).index(second)
+    assert second.show_expanded and not foreign.show_expanded and not first.show_expanded
+    # Native rendering delegates to Blender instead of the compact RNA editor.
+    original_draw = feature.draw
+    calls = []
+    feature.draw = lambda layout, context: calls.append('list')
+    try:
+        feature._draw_native(SimpleNamespace(layout=SimpleNamespace(
+            template_modifiers=lambda: calls.append('native'))), bpy.context)
+    finally:
+        feature.draw = original_draw
+    assert calls == ['list', 'native']
+    foreign.node_group = None
+    obj.modifiers.active = foreign
+    feature.draw_active_settings(Layout(), bpy.context)
+    obj.modifiers.remove(foreign)
+    feature._enforce_pending()
+    bpy.data.node_groups.remove(group)
+    bpy.data.node_groups.remove(smooth_group)
+    print('PASS foreign populated Geometry Nodes / Smooth by Angle / non-value sockets / legacy storage / native layouts / expansion')
+    # Walk every mesh-compatible modifier's settings for RNA regressions.
+    for item in bpy.types.Modifier.bl_rna.properties['type'].enum_items_static:
+        try:
+            modifier = obj.modifiers.new('SettingsTest', item.identifier)
+        except RuntimeError:
+            continue
+        if modifier is None:
+            continue
+        obj.modifiers.active = modifier
+        feature.draw_active_settings(Layout(), bpy.context)
+        obj.modifiers.remove(modifier)
+    print('PASS selected settings / native icons / monitor toggle / bidirectional pins / four-column favorite wrapping / popup hotkeys')
+
+
 def run():
     assert bpy.app.background, 'Run tests in a disposable background Blender process'
     for cycle in range(2):
@@ -464,6 +663,7 @@ def run():
     print('PASS registration / unregister / re-register')
     modifier_list_cases()
     modifier_workflow_cases()
+    modifier_editor_cases()
     connected_strip_cases()
     for count in (2, 4, 9):
         for method in ('LINEAR', 'CATMULL'):
@@ -523,6 +723,8 @@ def run():
     feature = importlib.import_module(f'{ROOT.name}.features.modifier_list')
     assert feature._stack_changed not in bpy.app.handlers.depsgraph_update_post
     assert not bpy.app.timers.is_registered(feature._enforce_pending)
+    assert not bpy.app.timers.is_registered(feature._init_keymap)
+    assert not feature._keymap_items
     from bl_ui.properties_data_modifier import DATA_PT_modifiers
     assert DATA_PT_modifiers.draw is not feature._draw_native
     print('ALL MODIFIER LIST AND RESAMPLE TESTS PASSED')

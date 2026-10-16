@@ -64,6 +64,7 @@ class MBT_MT_pie(bpy.types.Menu):
 
     def draw(self, context):
         pie = self.layout.menu_pie()
+        pie.operator_context = 'INVOKE_REGION_WIN'
         prefs = get_prefs(context)
         pie_def = find_pie(prefs, active["name"]) if prefs else None
         if pie_def is None:

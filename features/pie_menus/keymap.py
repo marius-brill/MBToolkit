@@ -26,7 +26,8 @@ def rebuild():
     for pie in prefs.pies:
         if pie.key == "NONE":
             continue
-        kmi = km.keymap_items.new("mbt.call_pie", pie.key, "PRESS", ctrl=pie.ctrl, shift=pie.shift, alt=pie.alt)
+        kmi = km.keymap_items.new("mbt.call_pie", pie.key, "PRESS", ctrl=pie.ctrl,
+                                 shift=pie.shift, alt=pie.alt, oskey=pie.oskey)
         kmi.properties.pie_name = pie.name
         _items.append((km, kmi))
 

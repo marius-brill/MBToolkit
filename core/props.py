@@ -1,7 +1,7 @@
 """Per-scene properties, available as `scene.mbt`."""
 
 import bpy
-from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty, PointerProperty, StringProperty
+from bpy.props import BoolProperty, EnumProperty, PointerProperty, StringProperty
 
 from .registry import register_classes, unregister_classes
 
@@ -22,12 +22,6 @@ class MBT_SceneProps(bpy.types.PropertyGroup):
         ('SELECTED', 'Selected Objects', 'Selected objects in the current view layer'),
         ('COLLECTION', 'Active Collection', 'Objects in the active collection and current view layer')))
     stats_recursive: BoolProperty(name="Include Child Collections", default=True)
-    stats_timings: BoolProperty(name="Native Modifier Timings", default=True,
-        description="Read timings from the last evaluated stack; diagnostic values, not frame time")
-    stats_tri_budget: IntProperty(name="Triangle Budget", default=1000000, min=1)
-    stats_ms_budget: FloatProperty(name="Modifier Budget (ms)", default=16.0, min=0.01,
-        description="Highlight objects above this sum of modifier timings; not a frame-time budget")
-    stats_options: BoolProperty(name="Options and Metric Help", default=False)
 
 
 classes = (MBT_SceneProps,)

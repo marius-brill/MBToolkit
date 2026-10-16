@@ -3,7 +3,7 @@
 import ast
 
 import bpy
-from bpy.props import BoolProperty, CollectionProperty, EnumProperty, StringProperty
+from bpy.props import BoolProperty, CollectionProperty, EnumProperty, StringProperty, IntProperty
 
 from ...core.registry import register_classes, unregister_classes
 
@@ -38,6 +38,8 @@ def parse_args(text):
         return {}
     try:
         tree = ast.parse(f"f({text})", mode="eval")
+        if tree.body.args or any(kw.arg is None for kw in tree.body.keywords):
+            return None
         return {kw.arg: ast.literal_eval(kw.value) for kw in tree.body.keywords}
     except Exception:
         return None
@@ -56,6 +58,7 @@ class MBT_PieSlot(bpy.types.PropertyGroup):
     idname: StringProperty(name="ID", description="Operator id, menu id or pie name depending on the action")
     args: StringProperty(name="Arguments", description="Operator arguments, e.g. mode='EDIT'")
     code: StringProperty(name="Code", description="One line of Python. 'bpy' and 'C' (context) are available")
+    advanced: BoolProperty(name='Advanced', default=False)
 
 
 class MBT_PieMenu(bpy.types.PropertyGroup):
@@ -64,6 +67,8 @@ class MBT_PieMenu(bpy.types.PropertyGroup):
     ctrl: BoolProperty(name="Ctrl", update=_hotkey_changed)
     shift: BoolProperty(name="Shift", update=_hotkey_changed)
     alt: BoolProperty(name="Alt", update=_hotkey_changed)
+    oskey: BoolProperty(name='OS Key', update=_hotkey_changed)
+    slot_index: IntProperty(default=0, min=0, max=7)
     slots: CollectionProperty(type=MBT_PieSlot)
 
 

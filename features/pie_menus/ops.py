@@ -5,6 +5,7 @@ from ...core.addon import get_prefs
 from ...core.registry import register_classes, unregister_classes
 from . import runtime
 from .data import SLOT_COUNT
+from . import actions
 
 
 class MBT_OT_call_pie(bpy.types.Operator):
@@ -57,6 +58,7 @@ def _new_pie(prefs, base="Pie"):
     for _ in range(SLOT_COUNT):
         pie.slots.add()
     prefs.pie_index = len(prefs.pies) - 1
+    bpy.context.preferences.is_dirty = True
     return pie
 
 
@@ -89,6 +91,7 @@ class MBT_OT_pie_remove(bpy.types.Operator):
         prefs = get_prefs(context)
         prefs.pies.remove(prefs.pie_index)
         prefs.pie_index = max(0, min(prefs.pie_index, len(prefs.pies) - 1))
+        context.preferences.is_dirty = True
         keymap.rebuild()
         return {"FINISHED"}
 
@@ -108,6 +111,28 @@ class MBT_OT_pie_add_example(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class MBT_OT_pie_duplicate(bpy.types.Operator):
+    bl_idname = 'mbt.pie_duplicate'
+    bl_label = 'Duplicate Pie'
+
+    @classmethod
+    def poll(cls, context):
+        prefs = get_prefs(context)
+        return prefs is not None and 0 <= prefs.pie_index < len(prefs.pies)
+
+    def execute(self, context):
+        prefs = get_prefs(context)
+        source = prefs.pies[prefs.pie_index]
+        values = [{name: getattr(slot, name) for name in ('action', 'label', 'icon', 'idname', 'args', 'code')}
+                  for slot in source.slots]
+        pie = _new_pie(prefs, source.name)
+        for slot, value in zip(pie.slots, values):
+            for name, item in value.items():
+                setattr(slot, name, item)
+        context.preferences.is_dirty = True
+        return {'FINISHED'}
+
+
 class MBT_OT_rebuild_hotkeys(bpy.types.Operator):
     bl_idname = "mbt.rebuild_hotkeys"
     bl_label = "Rebuild Hotkeys"
@@ -119,12 +144,13 @@ class MBT_OT_rebuild_hotkeys(bpy.types.Operator):
         return {"FINISHED"}
 
 
-classes = (
+classes = actions.classes + (
     MBT_OT_call_pie,
     MBT_OT_run_slot_code,
     MBT_OT_pie_add,
     MBT_OT_pie_remove,
     MBT_OT_pie_add_example,
+    MBT_OT_pie_duplicate,
     MBT_OT_rebuild_hotkeys,
 )
 

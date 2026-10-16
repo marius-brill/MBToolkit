@@ -1,5 +1,6 @@
 import bpy
-from bpy.props import CollectionProperty, EnumProperty, IntProperty, FloatProperty, StringProperty
+from bpy.props import BoolProperty, CollectionProperty, EnumProperty, IntProperty, FloatProperty, StringProperty
+from .features.pie_menus.data import KEY_ITEMS
 
 # Try to import pie menus - if they fail, continue without them
 try:
@@ -11,11 +12,22 @@ except ImportError:
 
 from .core.registry import register_classes, unregister_classes
 from .core.addon import get_prefs
+from .core import preferences_ui
+from .features import n_panel
+
+
+def _drag_favorite(self, value):
+    if value and not preferences_ui._drag_sessions:
+        bpy.ops.mbt.reorder_favorites('INVOKE_DEFAULT', key=self.key)
 
 
 class MBT_ModifierFavorite(bpy.types.PropertyGroup):
     key: StringProperty()
     label: StringProperty()
+    drag: BoolProperty(name='Drag to reorder',
+        description='Drag to move this favorite; release to finish, Escape to cancel',
+        get=lambda self: preferences_ui.favorite_dragged(self.key), set=_drag_favorite,
+        options={'SKIP_SAVE'})
 
 
 class MBT_OT_modifier_favorite(bpy.types.Operator):
@@ -52,20 +64,25 @@ class MBT_OT_modifier_favorite(bpy.types.Operator):
         return {'FINISHED'}
 
 
+def _modifier_hotkey_changed(self, context):
+    from .features.modifier_list import rebuild_keymap
+    rebuild_keymap()
+
+
 def draw_modifier_preferences(layout, prefs):
     from .features.modifier_list import catalog, entry_key, CATEGORIES
-    layout.label(text='Favorite modifiers — toolbar order:')
-    for index, favorite in enumerate(prefs.modifier_favorites):
-        row = layout.row(align=True)
-        row.label(text=favorite.label)
-        for action, icon in (('UP', 'TRIA_UP'), ('DOWN', 'TRIA_DOWN'), ('REMOVE', 'X')):
-            op = row.operator('mbt.modifier_favorite', text='', icon=icon)
-            op.action, op.index = action, index
-    layout.label(text='Choose favorites (availability depends on the active object type):')
+    layout.label(text='Viewport modifier popup shortcut:')
+    preferences_ui.draw_shortcut(layout, prefs)
     entries = {}
     for obj_type in ('MESH', 'CURVE', 'VOLUME', 'GREASEPENCIL', 'POINTCLOUD', 'LATTICE'):
         for entry in catalog(obj_type):
             entries[entry_key(entry)] = entry
+    preview = layout.box()
+    preview.label(text='Favorites')
+    preferences_ui.draw_favorite_tiles(preview, prefs, entries)
+    if not prefs.modifier_favorites:
+        preview.label(text='Choose favorites below to build your toolbar', icon='ADD')
+    layout.label(text='Available modifiers')
     favorites = {f.key for f in prefs.modifier_favorites}
     row = layout.row()
     for category in CATEGORIES:
@@ -93,9 +110,23 @@ class MBT_Preferences(bpy.types.AddonPreferences):
 
     pies: CollectionProperty(type=MBT_PieMenu)
     modifier_favorites: CollectionProperty(type=MBT_ModifierFavorite)
+    n_panel_tabs: CollectionProperty(type=n_panel.MBT_NPanelTab)
+    n_panel_enabled: BoolProperty(name='Enable Sidebar Tab Manager', default=False,
+        description='Manage whole sidebar tabs from MBToolkit preferences', update=n_panel.changed)
+    modifier_popup_key: EnumProperty(name='Key', items=KEY_ITEMS, default='W', update=_modifier_hotkey_changed)
+    modifier_popup_shift: BoolProperty(name='Shift', default=True, update=_modifier_hotkey_changed)
+    modifier_popup_ctrl: BoolProperty(name='Ctrl', default=False, update=_modifier_hotkey_changed)
+    modifier_popup_alt: BoolProperty(name='Alt', default=False, update=_modifier_hotkey_changed)
+    modifier_popup_oskey: BoolProperty(name='OS Key', default=False, update=_modifier_hotkey_changed)
     pie_index: IntProperty()
+    stats_timings: BoolProperty(name='Native Modifier Timings', default=True,
+        description='Read last-evaluation modifier timings, not frame time')
+    stats_tri_budget: IntProperty(name='Triangle Budget', default=1000000, min=1)
+    stats_ms_budget: FloatProperty(name='Modifier Budget (ms)', default=16.0, min=0.01)
     tab: EnumProperty(
-        items=(("MODIFIERS", "Modifiers", ""), ("PIES", "Pie Menus", ""), ("ABOUT", "About", "")),
+        items=(("MODIFIERS", "Modifiers", ""), ("PIES", "Pie Menus", ""),
+               ("PERFORMANCE", "Scene Performance", ""), ("UV", "UV", ""),
+               ("N_PANEL", "N-Panel", "Manage whole 3D Viewport sidebar tabs"), ("ABOUT", "About", "")),
         default="MODIFIERS",
     )
 
@@ -106,22 +137,27 @@ class MBT_Preferences(bpy.types.AddonPreferences):
         # Draw UV tools settings
         if self.tab == 'MODIFIERS':
             draw_modifier_preferences(layout, self)
+        elif self.tab == 'N_PANEL':
+            n_panel.draw_preferences(layout, self)
+        elif self.tab == 'PERFORMANCE':
+            layout.prop(self, 'stats_timings')
+            layout.prop(self, 'stats_tri_budget')
+            layout.prop(self, 'stats_ms_budget')
         elif self.tab == "PIES" and PIE_MENUS_AVAILABLE:
             pie_ui.draw_prefs(layout, self)
         elif self.tab == "PIES":
             layout.label(text="Pie menus not available")
+        elif self.tab == 'UV':
+            layout.label(text='UV Tools')
+            layout.prop(self, 'uv_angle_threshold')
         else:
             layout.label(text="MBToolkit - personal hard surface workflow toolkit")
             layout.operator("mbt.rebuild_hotkeys", icon="FILE_REFRESH")
             
-            # Add UV tools settings section
-            layout.separator()
-            layout.label(text="UV Tools Settings:")
-            layout.prop(self, "uv_angle_threshold")
 
 
 
-classes = (MBT_ModifierFavorite, MBT_OT_modifier_favorite, MBT_Preferences)
+classes = (MBT_ModifierFavorite, MBT_OT_modifier_favorite) + preferences_ui.classes + n_panel.classes + (MBT_Preferences,)
 
 
 def register():
@@ -129,4 +165,5 @@ def register():
 
 
 def unregister():
+    preferences_ui.cleanup()
     unregister_classes(classes)

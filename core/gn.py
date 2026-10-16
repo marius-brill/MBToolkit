@@ -56,15 +56,33 @@ def ensure_group(name, rev, build):
     return ng
 
 
+def modifier_inputs(mod):
+    """Return modern input storage, or None on legacy Blender versions."""
+    props = getattr(mod, 'properties', None)
+    return getattr(props, 'inputs', None) if props is not None else None
+
+
+def legacy_modifier_input_exists(mod, identifier):
+    """Some modifier structs deliberately do not support IDProperties."""
+    try:
+        return identifier in mod
+    except TypeError:
+        return False
+
+
 def set_modifier_input(mod, identifier, value):
     """Blender 5.2 moved GN modifier inputs to modifier.properties.inputs.<id>.value."""
-    props = getattr(mod, "properties", None)
-    inputs = getattr(props, "inputs", None) if props is not None else None
-    socket_prop = getattr(inputs, identifier, None) if inputs is not None else None
-    if socket_prop is not None:
+    inputs = modifier_inputs(mod)
+    if inputs is not None:
+        socket_prop = getattr(inputs, identifier, None)
+        if socket_prop is None or 'value' not in socket_prop.bl_rna.properties:
+            raise ValueError(f'Modifier input {identifier!r} has no editable value')
         socket_prop.value = value
     else:
-        mod[identifier] = value  # Blender < 5.2
+        try:
+            mod[identifier] = value  # Blender < 5.2
+        except TypeError as exc:
+            raise ValueError(f'Modifier input {identifier!r} is unavailable') from exc
 
 
 def add_to_selected(operator, context, group, modifier_name, values):
