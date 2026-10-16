@@ -139,9 +139,23 @@ Run the existing `verify_structure.py` using Python for syntax checks or Blender
 
 The integration tests exercise registration cycles, count changes, selection, interpolation, custom data, invalid inputs, and injected failure recovery. Interactive panel appearance, dialogs, F9, and undo/redo still require a UI smoke test.
 
+
+## Features
+
+- **Align Tools**: Drop objects to ground or move to target location
+- **Incremental Rename**: Rename selected objects with a base name and sequential numbering
+- **Scene Performance**: Monitor triangle count and modifier evaluation times. Can clone from GitHub
+-> need to be able to select meshes from list
+-> look into performance cost of live updating
+- **Script Runner**: Execute external Python scripts directly from the N panel
+- **Pie Menu Editor**: Custom pie menu creator setup. Can clone from GitHub
+- **Clean Up Mesh**: Can clone from GitHub
+
 ## Future Features Ideas
 
-- **Focus**: Machin3Tools type focus with hotkey on object or multiple objects. Can clone from GitHub.
+- **Focus**: Machin3Tools type focus with hotkey on object or multiple objects. Can clone from GitHub
+- **Double Click Select**: Bind ctrl + l (select linked by type) to double click
+- **Resample Mesh**: Like the existing addon. Could be technically complex
 - **Automatic Unwrap**: Heavy on math and complex operations could be difficult. Maybe clone from existing from GitHub as base
 - **Modifier List**: Change modifier stack to list view with favorites. Can clone from GitHub
 - **Smart Face**: Can clone from GitHub
