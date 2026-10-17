@@ -20,14 +20,14 @@ Order matters: property groups must register before anything that uses them.
 try:
     # Import all modules directly
     from .core import props, ops
-    from .features import script_runner, align, rename, scene_stats, geonodes, uv_tools, clean_up, modifier_list, resample, n_panel
+    from .features import script_runner, align, rename, scene_stats, geonodes, uv_tools, clean_up, modifier_list, resample, n_panel, substance_painter
     from .ui import panels
     from . import preferences
     from .features.pie_menus import data as pie_data, ui as pie_ui, ops as pie_ops, runtime as pie_runtime, keymap as pie_keymap
     
     # Register everything
     _modules = [props, ops, pie_data, pie_ui, pie_ops, pie_runtime, preferences, pie_keymap,
-                script_runner, align, rename, scene_stats, geonodes, uv_tools, clean_up, modifier_list, resample, panels, n_panel]
+                script_runner, align, rename, scene_stats, geonodes, uv_tools, clean_up, modifier_list, resample, substance_painter, panels, n_panel]
     
     def register():
         """Register all addon modules"""

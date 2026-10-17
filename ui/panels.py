@@ -3,7 +3,7 @@
 import bpy
 
 from ..core.registry import register_classes, unregister_classes
-from ..features import align, rename, scene_stats, script_runner, geonodes, resample
+from ..features import align, rename, scene_stats, script_runner, geonodes, resample, substance_painter
 
 
 class MBT_PT_main(bpy.types.Panel):
@@ -83,15 +83,8 @@ class MBT_PT_uv(_SubPanel, bpy.types.Panel):
     bl_label = "UV"
 
     def draw(self, context):
-        layout = self.layout
-        # Add UV related operators here
-        layout.label(text="UV Tools")
-        # Placeholder for future UV functionality
-        try:
-            from ..features import uv_tools
-            uv_tools.draw(self.layout, context)
-        except ImportError:
-            pass  # Skip if geonodes modules are not available
+        from ..features import uv_tools
+        uv_tools.draw(self.layout, context)
 
 
 class MBT_PT_bake(_SubPanel, bpy.types.Panel):
@@ -99,10 +92,7 @@ class MBT_PT_bake(_SubPanel, bpy.types.Panel):
     bl_label = "Bake"
 
     def draw(self, context):
-        layout = self.layout
-        # Add bake related operators here
-        layout.label(text="Bake Tools")
-        # Placeholder for future bake functionality
+        substance_painter.draw(self.layout, context)
 
 
 class MBT_PT_scene_stats(_SubPanel, bpy.types.Panel):

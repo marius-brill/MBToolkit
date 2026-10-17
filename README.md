@@ -68,6 +68,19 @@ MBToolkit itself; the manager adds no sidebar panel or individual panel controls
   manager if a particular add-on is incompatible. Existing per-editor panel
   expansion/pinning state may be reset by re-registration.
 
+## Substance Painter foundation
+
+The **Bake** panel has one primary **Bake** action: validate, pair meshes, export
+fresh snapshots, connect/launch Painter, create or update the associated project,
+bake, save, export textures and update Blender materials. Internal job files are
+managed automatically. Collection assignment moves meshes rather than adding links.
+Name matching uses explicit Bake Targets, existing names, or conservative sampled
+surface matching; ambiguous inputs stop with an actionable error. Project templates
+can be set globally or per scene. The default export definition is automatic;
+advanced custom unpacked PNG mappings and painting-only texture updates are supported.
+See [SUBSTANCE_PAINTER.md](SUBSTANCE_PAINTER.md) for the workflow, supported texture
+filenames, limitations, and background-Blender tests.
+
 ## Adding a feature (registration)
 1. Create `features/<name>.py` with operators and `register()/unregister()`.
 2. Import the feature in the root `__init__.py` and add its module object to `_modules`, before `panels`. Register property groups before their consumers.
@@ -124,6 +137,17 @@ Registration is explicit, not automatic. Pie-menu property types and UI/operator
 4. Ensure all Python dependencies are properly installed
 
 ## Features
+
+### UV Suite
+
+The UV suite is available in the 3D Viewport and UV Editor MBToolkit sidebars:
+Auto UV with seam repair and unwrap-method comparison; topology-aware straighten,
+quadrify, rectify and relax; native shape search and constrained rectangle packing;
+pixel gaps/borders, fixed-density UDIM layouts, locks and existing exact stacks;
+px/m or px/cm density tools; selection diagnostics; UV transforms and map management.
+Operations protect selection and roll back UV/seam changes on failure (selection
+tools intentionally change selection). See `UV_SUITE.md` for exact behavior,
+remaining planned features, conservative algorithm limits and test instructions.
 
 - **Align Tools**: Drop objects to ground or move to target location
 - **Incremental Rename**: Rename selected objects with a base name and sequential numbering

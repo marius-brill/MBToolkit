@@ -123,10 +123,17 @@ class MBT_Preferences(bpy.types.AddonPreferences):
         description='Read last-evaluation modifier timings, not frame time')
     stats_tri_budget: IntProperty(name='Triangle Budget', default=1000000, min=1)
     stats_ms_budget: FloatProperty(name='Modifier Budget (ms)', default=16.0, min=0.01)
+    painter_executable: StringProperty(name='Painter Executable', subtype='FILE_PATH',
+        description='Leave empty to detect the standard Adobe/Steam installation')
+    painter_project_template: StringProperty(name='Default Project Template', subtype='FILE_PATH',
+        description='Optional .spt template for new projects; scene template overrides this')
+    painter_port: IntProperty(name='Local Port', default=60041, min=1024, max=65535,
+        description='IPv4/IPv6 loopback only; automatic launch uses the default port 60041')
     tab: EnumProperty(
         items=(("MODIFIERS", "Modifiers", ""), ("PIES", "Pie Menus", ""),
                ("PERFORMANCE", "Scene Performance", ""), ("UV", "UV", ""),
-               ("N_PANEL", "N-Panel", "Manage whole 3D Viewport sidebar tabs"), ("ABOUT", "About", "")),
+                ("N_PANEL", "N-Panel", "Manage whole 3D Viewport sidebar tabs"),
+                ("PAINTER", "Painter", "Substance Painter connection"), ("ABOUT", "About", "")),
         default="MODIFIERS",
     )
 
@@ -150,6 +157,18 @@ class MBT_Preferences(bpy.types.AddonPreferences):
         elif self.tab == 'UV':
             layout.label(text='UV Tools')
             layout.prop(self, 'uv_angle_threshold')
+        elif self.tab == 'PAINTER':
+            layout.prop(self, 'painter_executable')
+            layout.prop(self, 'painter_project_template')
+            layout.prop(self, 'painter_port')
+            row = layout.row(align=True)
+            row.operator('mbt.painter_connect', text='Detect').action = 'DETECT'
+            row.operator('mbt.painter_connect', text='Test Connection').action = 'TEST'
+            row.operator('mbt.painter_connect', text='Launch / Connect').action = 'CONNECT'
+            layout.label(text='Remote scripting executes code. Use only on a trusted machine.', icon='ERROR')
+            layout.label(text='Client uses 127.0.0.1 / ::1 only. Keep the Painter port firewalled.')
+            if context.scene and hasattr(context.scene, 'mbt_painter'):
+                layout.label(text=context.scene.mbt_painter.report)
         else:
             layout.label(text="MBToolkit - personal hard surface workflow toolkit")
             layout.operator("mbt.rebuild_hotkeys", icon="FILE_REFRESH")
