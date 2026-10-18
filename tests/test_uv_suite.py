@@ -8,7 +8,7 @@ import bmesh
 sys.stdout.reconfigure(line_buffering=True)
 print('START UV SUITE TESTS', flush=True)
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT.parent))
 # Load only the UV feature. Importing the complete addon also initializes unrelated
 # features and makes this focused solver test depend on their startup behavior.

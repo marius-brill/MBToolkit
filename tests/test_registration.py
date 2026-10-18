@@ -9,7 +9,7 @@ import sys
 import bpy
 import bmesh
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT.parent))
 addon = importlib.import_module(ROOT.name)
 resample = importlib.import_module(f'{ROOT.name}.features.resample')

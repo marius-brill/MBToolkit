@@ -12,7 +12,7 @@ import sys
 import addon_utils
 import bpy
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT.parent))
 assert 'mbt_npanel_test_config' in os.environ.get('BLENDER_USER_CONFIG', ''), 'Use disposable config only'
 mode = sys.argv[sys.argv.index('--') + 1]

@@ -7,7 +7,7 @@ from tempfile import TemporaryDirectory
 from unittest.mock import Mock, patch
 import bpy
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT.parent))
 addon = importlib.import_module(ROOT.name)
 jobs = importlib.import_module(ROOT.name + '.features.substance_painter.jobs')

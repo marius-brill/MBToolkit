@@ -242,11 +242,18 @@ Open **3D Viewport > Sidebar > MBToolkit > Scene Performance** in Object Mode.
 - Interactive scans run in main-thread batches capped at 32 objects and an approximately 8 ms shared controller budget. One expensive dependency-graph evaluation or mesh conversion cannot be interrupted mid-call. Explicit **Cancel** preserves partial manual results, while cancelled automatic work preserves its previous committed snapshot. Scene/view-layer/Local View/frame/scope changes are hard boundaries; ordinary geometry updates queue a new revision without discarding work. Background automation runs synchronously under an explicit viewport override.
 - Snapshots include scene/view-layer/scope/frame metadata and use session object identities rather than names. Renaming does not retarget a result to a different object. File loads and undo/redo clear transient results; results are not saved into the blend file.
 
+## Development tests
+
+Development checks live in `tests/`, separate from the add-on runtime. See
+`tests/README.md` for coverage, safe execution commands, GUI checks and persistence
+testing. Extension builds exclude this directory; omit it from manually made
+distribution ZIPs as well.
+
 ### Scene Performance validation
 
-Run `test_scene_performance.py` in a **disposable background Blender process with `--factory-startup --python-exit-code 1`**. It creates/deletes objects and must never be run in a working scene. Run `test_registration.py` separately for the existing Modifier List/Resample regression suite. Interactive appearance, sidebar widths, Local View, and actual UI responsiveness still need a viewport smoke test.
+Run `tests/test_scene_performance.py` in a **disposable background Blender process with `--factory-startup --python-exit-code 1`**. It creates/deletes objects and must never be run in a working scene. Run `tests/test_registration.py` separately for the existing Modifier List/Resample regression suite. Interactive appearance, sidebar widths, Local View, and actual UI responsiveness still need a viewport smoke test.
 
-`test_scene_performance_live.py` runs in a disposable **interactive** factory-startup Blender with `--enable-event-simulate` and checks scheduled multi-batch collection, Blender-native viewport hit selection, explicit list activation, soft-change follow-up, idle behavior, editor/window isolation and file-load recovery. It quits its own process. OS-delivered mouse events and keyboard focus still need a manual smoke test. The background suite also covers Local View, view-layer rebinds, rename identity, selection guards, partial cancellation and the legacy starvation sequence.
+`tests/test_scene_performance_live.py` runs in a disposable **interactive** factory-startup Blender with `--enable-event-simulate` and checks scheduled multi-batch collection, Blender-native viewport hit selection, explicit list activation, soft-change follow-up, idle behavior, editor/window isolation and file-load recovery. It quits its own process. OS-delivered mouse events and keyboard focus still need a manual smoke test. The background suite also covers Local View, view-layer rebinds, rename identity, selection guards, partial cancellation and the legacy starvation sequence.
 
 For diagnosis, `features.scene_performance.runtime.diagnostics()` returns controller registration/heartbeat, each editor's context, requested/committed/scanning revisions, progress, last reason/error, and a bounded 200-event trace. Handler callbacks only record Python revisions; Blender UI storage is updated by the controller, never from dependency-graph handlers. Unregister removes the controller and message-bus subscription; file load and undo/redo rebuild transient sessions.
 
@@ -255,7 +262,7 @@ For diagnosis, `features.scene_performance.runtime.diagnostics()` returns contro
 - **UV** has its own preferences tab and retains the existing angle threshold.
 - **Pie Menus** uses a compact list, name/shortcut header, directional slot preview, and one selected-slot editor. Add, duplicate (without duplicating its hotkey), remove, and the starter example remain available. Existing definitions are preserved.
 - Choose **Operator** and **Choose Blender Command** to search registered commands by name or ID, including native commands that are unavailable in the Preferences context. **Options** edits boolean, number, text, and ordinary enum overrides without executing the command. Arrays, enum flags, pointers and collections remain in the Advanced literal-argument field; unsupported overrides are preserved. Native menus also have a search picker. Nested MBToolkit pies and explicit Python actions remain supported. Commands execute using the viewport invocation context and retain Blender's mode/selection restrictions.
-- `test_preferences.py` exercises data, picker discovery, options, duplication, shortcut storage and preference drawing in a disposable background Blender. `test_preferences_live.py` runs with `--factory-startup --enable-event-simulate --python` in a disposable GUI process and checks real shortcut capture, GPU tile drawing, drag reorder, and Escape rollback. Never run either GUI test inside a working scene.
+- `tests/test_preferences.py` exercises data, picker discovery, options, duplication, shortcut storage and preference drawing in a disposable background Blender. `tests/test_preferences_live.py` runs with `--factory-startup --enable-event-simulate --python` in a disposable GUI process and checks real shortcut capture, GPU tile drawing, drag reorder, and Escape rollback. Never run these tests inside a working scene.
 
 ## Resample
 
@@ -269,7 +276,7 @@ Open **3D Viewport > Sidebar > MBToolkit > Resample** and enter Edit Mode on one
 
 ### Validation
 
-Run the existing `verify_structure.py` using Python for syntax checks or Blender for import checks. Run `test_registration.py` in a **disposable background Blender process with `--factory-startup --python-exit-code 1`**. It creates/deletes test objects and must not be run in a working scene.
+Run `tests/verify_structure.py` using Python for syntax checks or Blender for import checks. Run `tests/test_registration.py` in a **disposable background Blender process with `--factory-startup --python-exit-code 1`**. It creates/deletes test objects and must not be run in a working scene.
 
 The integration tests exercise registration cycles, count changes, selection, interpolation, custom data, invalid inputs, and injected failure recovery. Interactive panel appearance, dialogs, F9, and undo/redo still require a UI smoke test.
 

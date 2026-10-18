@@ -7,7 +7,7 @@ import traceback
 
 import bpy
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT.parent))
 addon = importlib.import_module(ROOT.name)
 manager = importlib.import_module(f'{ROOT.name}.features.n_panel')

@@ -9,9 +9,9 @@ from enum import Enum
 from tempfile import TemporaryDirectory
 from unittest.mock import Mock, patch
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT.parent))
-sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 tests = importlib.import_module('test_painter_bridge')
 bridge = tests.bridge
 

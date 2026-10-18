@@ -51,7 +51,7 @@ setting. Existence/output compatibility is confirmed by Painter during export;
 the add-on validates mapping structure before baking. Packed-channel import is not
 implemented. **Update Textures (No Bake)** handles painting-only updates.
 
-`test_painter_workflow.py` covers moves, grouping, ambiguity, refreshed snapshots,
+`tests/test_painter_workflow.py` covers moves, grouping, ambiguity, refreshed snapshots,
 project reuse, template/mapping preflight and controlled asynchronous reload handling.
 It runs with the same disposable background Blender invocation as the other tests.
 
@@ -205,16 +205,18 @@ and script failures are reported separately; completion/failure releases busy st
 
 ## Tests
 
-Run `test_substance_painter.py` using Blender 5.2 with
+See `tests/README.md` for the test inventory and safe execution examples.
+
+Run `tests/test_substance_painter.py` using Blender 5.2 with
 `--background --factory-startup --python-exit-code 1 --python <absolute-test-path>`.
 The script is destructive and must not run inside an existing working session.
 
-`test_painter_bridge.py` tests the transport and controlled Painter API behavior.
+`tests/test_painter_bridge.py` tests the transport and controlled Painter API behavior.
 Appending `-- --live` explicitly opts into launching Painter and creating a cube
 project in a retained temporary folder. It skips creation if a project is open,
 never closes Painter, and leaves a successfully created test project open.
 
-`test_painter_baking.py` adds controlled configuration, event cleanup, bake failure,
+`tests/test_painter_baking.py` adds controlled configuration, event cleanup, bake failure,
 cancellation, timeout, save gating and success-chain tests. `-- --live` opts into
 baking a disposable test project, saving, exporting, then verifying Blender
 material import. It may reuse an open project only when its parent directory has

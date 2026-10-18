@@ -9,7 +9,7 @@ from types import SimpleNamespace
 import unittest
 
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('section_data', ROOT / 'core' / 'section_data.py')
 data = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(data)

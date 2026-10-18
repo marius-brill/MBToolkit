@@ -13,3 +13,12 @@ license = ["SPDX:GPL-3.0-or-later"]
 
 [permissions]
 files = "Read and run user-selected Python scripts"
+
+[build]
+paths_exclude_pattern = [
+    "__pycache__/",
+    "/.git/",
+    "/*.zip",
+    "/.vscode/",
+    "/tests/",
+]

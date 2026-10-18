@@ -12,7 +12,7 @@ import traceback
 
 import bpy
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[1]
 RESULT = Path(tempfile.gettempdir()) / 'mbt_modifier_popup_result.txt'
 sys.path.insert(0, str(ROOT.parent))
 addon = importlib.import_module(ROOT.name)

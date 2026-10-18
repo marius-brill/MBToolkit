@@ -171,7 +171,7 @@ No upstream source code is copied or dynamically downloaded.
 
 ## Validation
 
-Run `test_uv_suite.py` only in a disposable Blender process with
+Run `tests/test_uv_suite.py` only in a disposable Blender process with
 `--background --factory-startup --python-exit-code 1`. It deletes test scene objects.
 UI appearance and interactive undo/redo still need a live smoke test.
 
