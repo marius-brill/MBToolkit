@@ -19,8 +19,10 @@ def main():
         return
     sys.path.insert(0, str(root.parent))
     addon = importlib.import_module(root.name)
-    assert addon._modules[-1].__name__.endswith('.ui.panels')
-    assert any(module.__name__.endswith('.features.resample') for module in addon._modules)
+    assert addon._modules[-1].__name__.endswith('.preferences')
+    assert any(key == 'resample' and not default
+               for key, label, default, paths in addon.feature_manager.FEATURES)
+    assert not any(module.__name__.startswith(root.name + '.features.') for module in addon._modules)
     for module in addon._modules:
         assert callable(module.register) and callable(module.unregister), module.__name__
         print(f'PASS module: {module.__name__}')

@@ -2,12 +2,65 @@
 
 Personal hard surface workflow toolkit for Blender 5.2+.
 
+## General preferences / optional features
+
+Open **Edit > Preferences > Add-ons > MBToolkit > General** to choose which
+features load. Script Runner, Rename / Clean Up, Align, Sidebar Tab Manager,
+Pie Menus, Modifier Tools and Scene Performance are enabled by default.
+UV Tools, Substance Painter Bridge / Bake, Geometry Nodes / Low-to-High and
+Resample are disabled by default.
+
+Switches apply in the current session, including removal of feature panels,
+operators, shortcuts, handlers and timers. Settings are retained when a feature
+is disabled. Use **Save Preferences** in General (or Blender's automatic
+preference saving) to retain your choices. On the next startup, disabled feature
+runtimes are not imported or registered. Lightweight preference storage types
+remain available so pie menus, favorites and sidebar arrangements are preserved.
+Python modules already imported in a session may remain cached until Blender exits.
+
+The sidebar manager feature switch controls loading the manager; its existing
+**Enable Sidebar Tab Management** setting controls applying the saved arrangement.
+
 ## Layout
+
+### MBToolkit sidebar sections
+
+The icon strip at the top controls the sections inside MBToolkit (separately from
+the whole-tab Sidebar Tab Manager). Each loaded feature has a distinct colored
+pastel symbol, also used in its fixed section heading. Transparent symbol
+backgrounds leave native gray buttons and their selected highlight visible.
+The MBToolkit title and preferences gear sit in the native collapsible panel
+header above the selector. Selector
+buttons are double-sized and wrap in narrow sidebars instead of being squeezed.
+Blender's native operator glyph size remains fixed; enlarging a button does not
+independently scale its glyph. Symbols use bold, high-contrast artwork for clarity.
+
+- **Click** an icon to show only that section.
+- **Shift-click** an inactive icon to append its section at the bottom.
+- **Shift-click** an active icon to hide it without reordering the others.
+- Remove and re-add a section to move it to the bottom. The icon strip stays in
+  a consistent order; the cards below follow selection order.
+- The gear opens preferences. Disabled features do not appear in the strip;
+  hiding a card does not unload its feature. Disabling a feature preserves its
+  saved position for re-enabling.
+
+Individual sections are always open, with boxed backgrounds and no collapse arrows. Box
+contrast follows Blender's theme. MBToolkit uses the existing native panel
+backdrop with a visible native header and one card per selected section, without an additional encompassing
+box. The layout grows and shrinks with section selection and scrolls natively.
+No theme colors, opacity, sidebar settings, or other Blender UI are modified.
+Native panel and box opacity remain controlled by the user's theme.
+Selector tooltips contain only the section name
+(Blender may append developer information when Python Tooltips are enabled).
+The pastel icons include a croissant for Bake, a checker square for UV, and
+non-crossing XY arrows for Align.
+Internal advanced/options expanders are unchanged. Use Save Preferences (or
+automatic preference saving) to retain selection and ordering across restarts.
 
 ```
 mbtoolkit/
   blender_manifest.toml      extension manifest (version, min Blender)
-  __init__.py                explicit imports and ordered _modules registration list
+  __init__.py                minimal core registration, then optional feature loading
   preferences.py             AddonPreferences (stores pie menu definitions)
   core/                      addon id/prefs access, class registry helper, scene props, shared operators
   features/
@@ -83,11 +136,14 @@ filenames, limitations, and background-Blender tests.
 
 ## Adding a feature (registration)
 1. Create `features/<name>.py` with operators and `register()/unregister()`.
-2. Import the feature in the root `__init__.py` and add its module object to `_modules`, before `panels`. Register property groups before their consumers.
-3. Expose `draw(layout, context)` and call it from a `_SubPanel` subclass in `ui/panels.py`; add that panel to its `classes` tuple.
+2. Add a key, label, default and lazy module path to `core/feature_manager.py`'s `FEATURES`. Register property groups before their consumers. Do not import optional runtimes from core modules.
+3. Expose `draw(layout, context)` and lazily import it inside a `_SubPanel` subclass in `ui/panels.py`; add the panel to `classes` and map it to its feature in `_features`.
 4. Use `MBT_OT_*` classes, `mbt.*` operator IDs, and the helpers in `core/registry.py`. Unregistration runs in reverse order.
 
-Registration is explicit, not automatic. Pie-menu property types and UI/operators register before preferences; keymaps register after preferences. Features and sidebar panels register afterwards and unregister in reverse order.
+Registration is explicit. Lightweight storage types register before preferences;
+only enabled feature runtimes register afterwards. Sidebar panels follow their
+feature switches. Runtime modules unregister in reverse order, with managed
+sidebar classes restored before panel changes.
 
 ## Installation Instructions
 

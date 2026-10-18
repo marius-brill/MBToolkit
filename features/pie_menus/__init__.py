@@ -1,10 +1,7 @@
 """Custom pie menus (data-driven, edited in the add-on preferences)."""
 
-from . import data, keymap, ops, runtime, ui
-
-
 def register():
-    data.register()
+    from . import keymap, ops, runtime, ui
     ui.register()
     ops.register()
     runtime.register()
@@ -12,8 +9,8 @@ def register():
 
 
 def unregister():
+    from . import keymap, ops, runtime, ui
     keymap.unregister()
     runtime.unregister()
     ops.unregister()
     ui.unregister()
-    data.unregister()

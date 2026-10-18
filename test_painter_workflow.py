@@ -26,6 +26,7 @@ def fails(function, text):
 def main():
     assert bpy.app.background
     addon.register()
+    addon.feature_manager.sync(type('Settings', (), {'enable_substance_painter': True})())
     bpy.ops.object.select_all(action='SELECT')
     bpy.ops.object.delete(use_global=False)
     bpy.ops.mesh.primitive_cube_add()

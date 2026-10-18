@@ -35,6 +35,7 @@ def main():
     output = io.StringIO()
     with contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
         addon.register()
+        addon.feature_manager.sync(type('Settings', (), {'enable_substance_painter': True})())
     assert 'Traceback' not in output.getvalue() and 'Failed' not in output.getvalue(), output.getvalue()
     ctx = bpy.context
     settings = ctx.scene.mbt_painter

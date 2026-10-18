@@ -87,6 +87,7 @@ def live():
         print('LIVE SKIPPED: existing project/busy Painter was left untouched', flush=True)
         return
     addon.register()
+    addon.feature_manager.sync(type('Settings', (), {'enable_substance_painter': True})())
     bpy.ops.object.select_all(action='SELECT')
     bpy.ops.object.delete(use_global=False)
     bpy.ops.mesh.primitive_cube_add()
@@ -203,6 +204,7 @@ def live_export():
         print('LIVE EXPORT SKIPPED: open project has no adjacent job.json', flush=True)
         return
     addon.register()
+    addon.feature_manager.sync(type('Settings', (), {'enable_substance_painter': True})())
     job = jobs.read_job(str(manifest))
     # Disposable Blender scene only; Painter project is neither closed nor saved.
     bpy.ops.object.select_all(action='SELECT')

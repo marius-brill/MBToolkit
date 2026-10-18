@@ -104,7 +104,7 @@ def run():
         duplicate.slots[0].action = action
         duplicate.slots[0].advanced = True
         pie_ui.draw_prefs(Layout(), prefs)
-    for tab in ('MODIFIERS', 'PIES', 'UV', 'PERFORMANCE', 'ABOUT'):
+    for tab in ('MODIFIERS', 'PIES', 'PERFORMANCE', 'ABOUT'):
         prefs.tab = tab
         type(prefs).draw(SimpleNamespace(layout=Layout(), tab=tab,
             **{name: getattr(prefs, name) for name in ('uv_angle_threshold', 'stats_timings', 'stats_tri_budget', 'stats_ms_budget',

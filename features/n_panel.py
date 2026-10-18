@@ -4,6 +4,8 @@ import bpy
 from bpy.props import BoolProperty, EnumProperty, IntProperty
 
 from ..core.addon import get_prefs
+from ..core.sidebar_data import MBT_NPanelTab
+from ..core.registry import register_classes, unregister_classes
 
 
 _originals = {}
@@ -220,11 +222,6 @@ def _tick():
     return 1.0
 
 
-class MBT_NPanelTab(bpy.types.PropertyGroup):
-    visible: BoolProperty(name='Visible', default=True, update=changed,
-        description='Show this entire sidebar tab, preserving its normal context checks')
-
-
 class MBT_OT_n_panel(bpy.types.Operator):
     bl_idname = 'mbt.n_panel'
     bl_label = 'Manage Sidebar Tabs'
@@ -298,6 +295,7 @@ classes = (MBT_NPanelTab, MBT_OT_n_panel)
 
 def register():
     global _running
+    register_classes((MBT_OT_n_panel,))
     _running = True
     bpy.app.timers.register(_tick, first_interval=0.5, persistent=True)
 
@@ -310,3 +308,4 @@ def unregister():
     restore()
     _pending = False
     _error = ''
+    unregister_classes((MBT_OT_n_panel,))

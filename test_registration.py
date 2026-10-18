@@ -650,12 +650,15 @@ def run():
     assert bpy.app.background, 'Run tests in a disposable background Blender process'
     for cycle in range(2):
         lifecycle(addon.register)
+        addon.feature_manager.sync(type('Settings', (), {'enable_resample': True})())
         for module in addon._modules:
             for cls in getattr(module, 'classes', ()):
                 assert cls.is_registered, cls.__name__
         assert bpy.ops.mbt.resample_wire.get_rna_type().identifier == 'MBT_OT_resample_wire'
         assert bpy.ops.mbt.resample_surface.get_rna_type().identifier == 'MBT_OT_resample_surface'
-        assert bpy.types.MBT_PT_resample.bl_parent_id == 'MBT_PT_main'
+        assert addon.panels.SECTION_BY_KEY['resample'][4] == ('resample',)
+        assert addon.panels.MBT_PT_main.is_registered
+        assert bpy.ops.mbt.select_section.get_rna_type().identifier == 'MBT_OT_select_section'
         if cycle == 0:
             lifecycle(addon.unregister)
             assert not hasattr(bpy.types, 'MBT_PT_resample')

@@ -1,19 +1,11 @@
 import bpy
 from bpy.props import BoolProperty, CollectionProperty, EnumProperty, IntProperty, FloatProperty, StringProperty
-from .features.pie_menus.data import KEY_ITEMS
-
-# Try to import pie menus - if they fail, continue without them
-try:
-    from .features.pie_menus import ui as pie_ui
-    from .features.pie_menus.data import MBT_PieMenu
-    PIE_MENUS_AVAILABLE = True
-except ImportError:
-    PIE_MENUS_AVAILABLE = False
+from .core.pie_data import KEY_ITEMS, MBT_PieMenu
 
 from .core.registry import register_classes, unregister_classes
 from .core.addon import get_prefs
-from .core import preferences_ui
-from .features import n_panel
+from .core import preferences_ui, feature_manager, sidebar_data
+from .core.section_data import DEFAULT_SELECTION
 
 
 def _drag_favorite(self, value):
@@ -65,8 +57,9 @@ class MBT_OT_modifier_favorite(bpy.types.Operator):
 
 
 def _modifier_hotkey_changed(self, context):
-    from .features.modifier_list import rebuild_keymap
-    rebuild_keymap()
+    if feature_manager.is_enabled('modifier_list'):
+        from .features.modifier_list import rebuild_keymap
+        rebuild_keymap()
 
 
 def draw_modifier_preferences(layout, prefs):
@@ -110,9 +103,11 @@ class MBT_Preferences(bpy.types.AddonPreferences):
 
     pies: CollectionProperty(type=MBT_PieMenu)
     modifier_favorites: CollectionProperty(type=MBT_ModifierFavorite)
-    n_panel_tabs: CollectionProperty(type=n_panel.MBT_NPanelTab)
-    n_panel_enabled: BoolProperty(name='Enable Sidebar Tab Manager', default=False,
-        description='Manage whole sidebar tabs from MBToolkit preferences', update=n_panel.changed)
+    n_panel_tabs: CollectionProperty(type=sidebar_data.MBT_NPanelTab)
+    sidebar_sections: StringProperty(name='Visible Toolkit Sections', default=DEFAULT_SELECTION,
+        description='Selected MBToolkit sections in click order; independent of whole sidebar tabs')
+    n_panel_enabled: BoolProperty(name='Enable Sidebar Tab Management', default=True,
+        description='Apply saved sidebar visibility and order', update=sidebar_data.changed)
     modifier_popup_key: EnumProperty(name='Key', items=KEY_ITEMS, default='W', update=_modifier_hotkey_changed)
     modifier_popup_shift: BoolProperty(name='Shift', default=True, update=_modifier_hotkey_changed)
     modifier_popup_ctrl: BoolProperty(name='Ctrl', default=False, update=_modifier_hotkey_changed)
@@ -130,30 +125,48 @@ class MBT_Preferences(bpy.types.AddonPreferences):
     painter_port: IntProperty(name='Local Port', default=60041, min=1024, max=65535,
         description='IPv4/IPv6 loopback only; automatic launch uses the default port 60041')
     tab: EnumProperty(
-        items=(("MODIFIERS", "Modifiers", ""), ("PIES", "Pie Menus", ""),
-               ("PERFORMANCE", "Scene Performance", ""), ("UV", "UV", ""),
-                ("N_PANEL", "N-Panel", "Manage whole 3D Viewport sidebar tabs"),
-                ("PAINTER", "Painter", "Substance Painter connection"), ("ABOUT", "About", "")),
-        default="MODIFIERS",
+        items=(("GENERAL", "General", "", 7),
+               ("MODIFIERS", "Modifiers", "", 0), ("PIES", "Pie Menus", "", 1),
+               ("PERFORMANCE", "Scene Performance", "", 2), ("UV", "UV", "", 3),
+               ("N_PANEL", "N-Panel", "Manage whole 3D Viewport sidebar tabs", 4),
+               ("PAINTER", "Painter", "Substance Painter connection", 5), ("ABOUT", "About", "", 6)),
+        default="GENERAL",
     )
 
     def draw(self, context):
         layout = self.layout
         layout.row().prop(self, "tab", expand=True)
         
-        # Draw UV tools settings
+        if self.tab == 'GENERAL':
+            layout.label(text='Enable only the features you use.', icon='PREFERENCES')
+            for key, label, default, paths in feature_manager.FEATURES:
+                layout.prop(self, 'enable_' + key)
+                if feature_manager.error(key):
+                    layout.label(text=feature_manager.error(key), icon='ERROR')
+            layout.separator()
+            layout.label(text='Changes apply immediately. Disabled features are skipped at startup.')
+            layout.label(text='Save Preferences to retain these choices across restarts.')
+            layout.operator('wm.save_userpref', text='Save Preferences', icon='FILE_TICK')
+            return
+        feature = {'MODIFIERS': 'modifier_list', 'PIES': 'pie_menus',
+                   'PERFORMANCE': 'scene_stats', 'UV': 'uv_tools',
+                   'N_PANEL': 'n_panel', 'PAINTER': 'substance_painter'}.get(self.tab)
+        if feature and not feature_manager.is_enabled(feature):
+            layout.label(text='This feature is disabled. Enable it in General.', icon='INFO')
+            layout.prop(self, 'enable_' + feature)
+            return
         if self.tab == 'MODIFIERS':
             draw_modifier_preferences(layout, self)
         elif self.tab == 'N_PANEL':
+            from .features import n_panel
             n_panel.draw_preferences(layout, self)
         elif self.tab == 'PERFORMANCE':
             layout.prop(self, 'stats_timings')
             layout.prop(self, 'stats_tri_budget')
             layout.prop(self, 'stats_ms_budget')
-        elif self.tab == "PIES" and PIE_MENUS_AVAILABLE:
-            pie_ui.draw_prefs(layout, self)
         elif self.tab == "PIES":
-            layout.label(text="Pie menus not available")
+            from .features.pie_menus import ui as pie_ui
+            pie_ui.draw_prefs(layout, self)
         elif self.tab == 'UV':
             layout.label(text='UV Tools')
             layout.prop(self, 'uv_angle_threshold')
@@ -171,12 +184,19 @@ class MBT_Preferences(bpy.types.AddonPreferences):
                 layout.label(text=context.scene.mbt_painter.report)
         else:
             layout.label(text="MBToolkit - personal hard surface workflow toolkit")
-            layout.operator("mbt.rebuild_hotkeys", icon="FILE_REFRESH")
+            if feature_manager.is_enabled('pie_menus'):
+                layout.operator("mbt.rebuild_hotkeys", icon="FILE_REFRESH")
             
 
 
 
-classes = (MBT_ModifierFavorite, MBT_OT_modifier_favorite) + preferences_ui.classes + n_panel.classes + (MBT_Preferences,)
+for _key, _label, _default, _paths in feature_manager.FEATURES:
+    MBT_Preferences.__annotations__['enable_' + _key] = BoolProperty(
+        name=_label, default=_default, update=feature_manager.changed,
+        description=f'Load {_label}; disabled features are skipped on the next startup')
+
+
+classes = (MBT_ModifierFavorite, MBT_OT_modifier_favorite) + preferences_ui.classes + (sidebar_data.MBT_NPanelTab, MBT_Preferences)
 
 
 def register():
