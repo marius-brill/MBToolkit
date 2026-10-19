@@ -1,6 +1,6 @@
 # MBToolkit
 
-Personal hard surface workflow toolkit for Blender 5.2+.
+Hard surface workflow toolkit for Blender 5.2+
 
 ## General preferences / optional features
 
@@ -205,14 +205,6 @@ Operations protect selection and roll back UV/seam changes on failure (selection
 tools intentionally change selection). See `UV_SUITE.md` for exact behavior,
 remaining planned features, conservative algorithm limits and test instructions.
 
-- **Align Tools**: Drop objects to ground or move to target location
-- **Incremental Rename**: Rename selected objects with a base name and sequential numbering
-- **Scene Performance**: Scoped geometry/modifier diagnostics, automatic incremental updates, viewport-synced selection, and cancellable scans.
-- **Script Runner**: Execute external Python scripts directly from the N panel
-- **Resample**: Resample open edge chains and one-quad-wide quad strips in its own sidebar section
-- **Pie Menu Editor**: Custom pie menu creator setup. Can clone from GitHub.
-- **Clean Up Mesh**: Can clone from GitHub
-
 
 ## Modifier List
 
@@ -285,17 +277,20 @@ The integration tests exercise registration cycles, count changes, selection, in
 
 - **Align Tools**: Drop objects to ground or move to target location
 - **Incremental Rename**: Rename selected objects with a base name and sequential numbering
-- **Scene Performance**: Monitor triangle count and modifier evaluation times with automatic updates and viewport-synced selection.
+- **Scene Performance**: Monitor triangle count and modifier evaluation times with automatic updates and viewport-synced selection
 - **Script Runner**: Execute external Python scripts directly from the N panel
-- **Pie Menu Editor**: Custom pie menu creator setup. Can clone from GitHub
-- **Clean Up Mesh**: Can clone from GitHub
+- **Pie Menu Editor**: Custom pie menu creator setup
+- **Clean Up Mesh**:
+- **Modifier List**: Change modifier stack to list view with favorites
+- **Organize UI**: Hide N-Panel segments
+
 
 ## Future Features Ideas
 
-- **Focus**: Machin3Tools type focus with hotkey on object or multiple objects. Can clone from GitHub
+- **Focus**: Machin3Tools type focus with hotkey on object or multiple objects
 - **Double Click Select**: Bind ctrl + l (select linked by type) to double click
-- **Resample Mesh**: Like the existing addon. Could be technically complex
-- **Automatic Unwrap**: Heavy on math and complex operations could be difficult. Maybe clone from existing from GitHub as base
-- **Modifier List**: Change modifier stack to list view with favorites. Can clone from GitHub
-- **Smart Face**: Can clone from GitHub
-- **Boolean Tools**: General setup. Might clone from HardOps
+- **Resample Mesh**: Like the existing addon resample mesh
+- **Automatic Unwrap**: Heavy on math and complex operations could be difficult
+- **Smart Face**:
+- **Boolean Tools**: General setup
+- **Bolts from Plane**: Add plane for where want to add a bolt. Select from dropdown list of bolts. On click highpoly of bolts get generated
